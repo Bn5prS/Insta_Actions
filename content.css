@@ -1,0 +1,351 @@
+/* CSS variables for Instagram Bulk Unsaver. Fallback styles mimic IG exactly. */
+.ibu-panel, .ibu-checkbox-wrapper {
+  --ibu-bg: var(--ig-primary-background, #ffffff);
+  --ibu-text: var(--ig-primary-text, #262626);
+  --ibu-text-secondary: var(--ig-secondary-text, #737373);
+  --ibu-border: var(--ig-elevated-separator, #dbdbdb);
+  --ibu-card-bg: var(--ig-elevated-background, #ffffff);
+  --ibu-accent: #0095f6; /* Instagram Blue */
+  --ibu-accent-hover: #1877f2;
+  --ibu-danger: #fa383e; /* Instagram Red */
+  --ibu-danger-hover: #d12c32;
+  --ibu-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  --ibu-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --ibu-radius: 12px;
+  --ibu-radius-inner: 8px;
+  
+  font-family: var(--ibu-font);
+}
+
+/* Detect Dark Mode via user system, HTML attribute, or Instagram classes */
+@media (prefers-color-scheme: dark) {
+  .ibu-panel, .ibu-checkbox-wrapper {
+    --ibu-bg: var(--ig-primary-background, #121212);
+    --ibu-text: var(--ig-primary-text, #f5f5f5);
+    --ibu-text-secondary: var(--ig-secondary-text, #a8a8a8);
+    --ibu-border: var(--ig-elevated-separator, #262626);
+    --ibu-card-bg: var(--ig-elevated-background, #262626);
+    --ibu-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  }
+}
+
+html[style*="color-scheme: dark"] .ibu-panel,
+html._theme-dark .ibu-panel,
+body.dark .ibu-panel,
+html[style*="color-scheme: dark"] .ibu-checkbox-wrapper,
+html._theme-dark .ibu-checkbox-wrapper,
+body.dark .ibu-checkbox-wrapper {
+  --ibu-bg: var(--ig-primary-background, #121212);
+  --ibu-text: var(--ig-primary-text, #f5f5f5);
+  --ibu-text-secondary: var(--ig-secondary-text, #a8a8a8);
+  --ibu-border: var(--ig-elevated-separator, #262626);
+  --ibu-card-bg: var(--ig-elevated-background, #262626);
+  --ibu-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* FLOATING CONTROL PANEL */
+.ibu-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 300px;
+  background-color: var(--ibu-card-bg);
+  border: 1px solid var(--ibu-border);
+  border-radius: var(--ibu-radius);
+  box-shadow: var(--ibu-shadow);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease;
+  user-select: none;
+}
+
+/* Collapsed Panel State */
+.ibu-panel.collapsed {
+  width: auto;
+  border-radius: 50%;
+  transform: scale(0.9);
+}
+
+.ibu-panel.collapsed .ibu-header {
+  border-bottom: none;
+  padding: 10px;
+  border-radius: 50%;
+}
+
+.ibu-panel.collapsed .ibu-body,
+.ibu-panel.collapsed .ibu-title {
+  display: none;
+}
+
+/* HEADER */
+.ibu-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ibu-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--ibu-card-bg);
+}
+
+.ibu-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ibu-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ibu-title-icon {
+  width: 16px;
+  height: 16px;
+  fill: var(--ibu-accent);
+}
+
+.ibu-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ibu-text-secondary);
+  border-radius: 50%;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.ibu-toggle-btn:hover {
+  background-color: var(--ibu-border);
+  color: var(--ibu-text);
+}
+
+.ibu-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  transition: transform 0.3s ease;
+}
+
+.ibu-panel.collapsed .ibu-toggle-btn svg {
+  transform: rotate(180deg);
+}
+
+/* BODY */
+.ibu-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ibu-counter {
+  font-size: 13px;
+  color: var(--ibu-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ibu-count-badge {
+  background-color: var(--ibu-accent);
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* CONFIG ROW */
+.ibu-config-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ibu-text);
+}
+
+.ibu-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ibu-number-input {
+  width: 50px;
+  padding: 4px 6px;
+  border: 1px solid var(--ibu-border);
+  border-radius: var(--ibu-radius-inner);
+  background-color: var(--ibu-bg);
+  color: var(--ibu-text);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+
+.ibu-number-input:focus {
+  border-color: var(--ibu-accent);
+}
+
+/* ACTION BUTTONS */
+.ibu-btn-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ibu-btn {
+  padding: 8px 12px;
+  border: 1px solid var(--ibu-border);
+  border-radius: var(--ibu-radius-inner);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--ibu-bg);
+  color: var(--ibu-text);
+}
+
+.ibu-btn:hover:not(:disabled) {
+  background-color: var(--ibu-border);
+}
+
+.ibu-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ibu-btn-primary {
+  background-color: var(--ibu-accent);
+  border-color: var(--ibu-accent);
+  color: #ffffff;
+  grid-column: span 2;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.ibu-btn-primary:hover:not(:disabled) {
+  background-color: var(--ibu-accent-hover);
+  border-color: var(--ibu-accent-hover);
+}
+
+.ibu-btn-danger {
+  background-color: var(--ibu-danger);
+  border-color: var(--ibu-danger);
+  color: #ffffff;
+  grid-column: span 2;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.ibu-btn-danger:hover:not(:disabled) {
+  background-color: var(--ibu-danger-hover);
+  border-color: var(--ibu-danger-hover);
+}
+
+/* PROGRESS & STATUS */
+.ibu-progress-wrapper {
+  display: none; /* hidden when idle */
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--ibu-border);
+  padding-top: 12px;
+}
+
+.ibu-status-text {
+  font-size: 12px;
+  color: var(--ibu-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ibu-progress-container {
+  width: 100%;
+  height: 6px;
+  background-color: var(--ibu-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ibu-progress-bar {
+  width: 0%;
+  height: 100%;
+  background-color: var(--ibu-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* GRID ITEM CHECKBOXES */
+.ibu-checkbox-wrapper {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 999;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: block;
+}
+
+.ibu-checkbox {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background-color: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ibu-checkbox-wrapper:hover .ibu-checkbox {
+  transform: scale(1.1);
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.ibu-checkbox-wrapper.selected .ibu-checkbox {
+  background-color: var(--ibu-accent);
+  border-color: var(--ibu-accent);
+  transform: scale(1.05);
+}
+
+/* Checkmark SVG inside the checkbox */
+.ibu-checkbox-icon {
+  width: 12px;
+  height: 12px;
+  fill: #ffffff;
+  display: none;
+}
+
+.ibu-checkbox-wrapper.selected .ibu-checkbox-icon {
+  display: block;
+}
+
+/* Add custom border selection highlight on the post thumbnail when checked */
+.ibu-post-selected {
+  position: relative;
+}
+
+.ibu-post-selected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 3px solid var(--ibu-accent);
+  pointer-events: none;
+  z-index: 90;
+  background-color: rgba(0, 95, 246, 0.05);
+  transition: background-color 0.2s ease;
+}
