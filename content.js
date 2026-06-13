@@ -5,6 +5,7 @@ let currentUrl = '';
 let checkInterval = null;
 let observer = null;
 let panelEl = null;
+let lastCheckedPost = null;
 
 // Start checking URL for Single Page Application navigation
 function startUrlCheck() {
@@ -108,6 +109,9 @@ function initExtension() {
   
   // Initial injection
   injectCheckboxes();
+  
+  // Check for unfinished session recovery
+  checkSessionRecovery();
 }
 
 // Collapses / Expands the control panel
@@ -145,19 +149,49 @@ function injectCheckboxes() {
       </div>
     `;
     
-    // Prevent default anchor clicks & toggle selection state
+    // Prevent default anchor clicks & toggle selection state (supports Shift + Click)
     const preventAndToggle = (e) => {
       e.preventDefault();
       e.stopPropagation();
       
       if (isRunning) return; // Ignore input while automation loop is running
       
-      cbWrapper.classList.toggle('selected');
-      if (cbWrapper.classList.contains('selected')) {
-        post.classList.add('ibu-post-selected');
+      const isSelected = !cbWrapper.classList.contains('selected'); // State it will become
+      
+      const main = document.querySelector('main');
+      const allPosts = main ? Array.from(main.querySelectorAll('a[href^="/p/"], a[href^="/reels/"]')) : [];
+      
+      if (e.shiftKey && lastCheckedPost && allPosts.includes(lastCheckedPost) && allPosts.includes(post)) {
+        const start = allPosts.indexOf(lastCheckedPost);
+        const end = allPosts.indexOf(post);
+        
+        const minIndex = Math.min(start, end);
+        const maxIndex = Math.max(start, end);
+        
+        for (let i = minIndex; i <= maxIndex; i++) {
+          const p = allPosts[i];
+          const cb = p.querySelector('.ibu-checkbox-wrapper');
+          if (cb) {
+            if (isSelected) {
+              cb.classList.add('selected');
+              p.classList.add('ibu-post-selected');
+            } else {
+              cb.classList.remove('selected');
+              p.classList.remove('ibu-post-selected');
+            }
+          }
+        }
       } else {
-        post.classList.remove('ibu-post-selected');
+        // Toggle single
+        cbWrapper.classList.toggle('selected');
+        if (cbWrapper.classList.contains('selected')) {
+          post.classList.add('ibu-post-selected');
+        } else {
+          post.classList.remove('ibu-post-selected');
+        }
       }
+      
+      lastCheckedPost = post;
       updateSelectedCount();
     };
     
@@ -231,6 +265,7 @@ function deselectAllPosts() {
       post.classList.remove('ibu-post-selected');
     }
   });
+  lastCheckedPost = null;
   updateSelectedCount();
 }
 
@@ -407,16 +442,170 @@ function showNavigationAlert() {
   alert('Bulk Unsaver is currently running. Please click "Stop Unsaving" before navigating away from this page.');
 }
 
-async function unsaveSelectedPosts() {
-  const selectedCheckboxes = Array.from(document.querySelectorAll('.ibu-checkbox-wrapper.selected'));
-  if (selectedCheckboxes.length === 0) return;
+function checkActionBlocked() {
+  const dialogs = document.querySelectorAll('div[role="dialog"]');
+  for (const dialog of dialogs) {
+    if (dialog.querySelector('article') || dialog.contains(panelEl)) continue;
+    
+    const text = (dialog.textContent || '').toLowerCase();
+    const blockKeywords = [
+      'try again later', 'action blocked', 'limit reached', 'suspicious', 'please wait',
+      'recommencez plus tard', 'intentalo de nuevo', 'inténtalo de nuevo', 'riprova', 'versuche es'
+    ];
+    
+    for (const kw of blockKeywords) {
+      if (text.includes(kw)) {
+        return dialog;
+      }
+    }
+  }
+  return null;
+}
 
-  isRunning = true;
-  shouldStop = false;
+async function handleBlockCooldown(dialog) {
+  const statusText = document.getElementById('ibu-status-text');
   
-  // Capture page navigation attempts to prevent breaking the script
-  document.addEventListener('click', navigationInterceptor, true);
-  window.addEventListener('beforeunload', beforeUnloadHandler);
+  // Close the block dialog
+  const btn = dialog.querySelector('button');
+  if (btn) btn.click();
+  else closeModal();
+  
+  await workerSleep(1000);
+  
+  // Close the post modal if open
+  closeModal();
+  await workerSleep(1000);
+  
+  if (statusText) statusText.style.color = '#fa383e';
+  
+  // 5 minutes cooldown = 300 seconds
+  const cooldownSec = 300;
+  for (let s = cooldownSec; s > 0; s--) {
+    if (shouldStop) break;
+    if (statusText) {
+      statusText.textContent = `⚠️ Action Blocked! Cooldown: ${s}s...`;
+    }
+    await workerSleep(1000);
+  }
+  
+  if (statusText) statusText.style.color = '';
+}
+
+async function showSummaryDashboard(successCount, skippedCount, startTime, total) {
+  const body = document.querySelector('.ibu-body');
+  if (!body) return;
+  
+  const elapsedMs = Date.now() - startTime;
+  const elapsedMin = Math.floor(elapsedMs / 60000);
+  const elapsedSec = Math.floor((elapsedMs % 60000) / 1000);
+  const timeStr = elapsedMin > 0 ? `${elapsedMin}m ${elapsedSec}s` : `${elapsedSec}s`;
+  
+  body.innerHTML = `
+    <div class="ibu-summary-container">
+      <h4 class="ibu-summary-title">Process Complete</h4>
+      <div class="ibu-stats-grid">
+        <div class="ibu-stat-card">
+          <div class="ibu-stat-val">${successCount}</div>
+          <div class="ibu-stat-label">Unsaved</div>
+        </div>
+        <div class="ibu-stat-card">
+          <div class="ibu-stat-val">${skippedCount}</div>
+          <div class="ibu-stat-label">Skipped</div>
+        </div>
+        <div class="ibu-stat-card" style="grid-column: span 2;">
+          <div class="ibu-stat-val">${timeStr}</div>
+          <div class="ibu-stat-label">Time Taken</div>
+        </div>
+      </div>
+      <button id="ibu-reload-btn" class="ibu-btn ibu-btn-primary">Reloading page in 5s...</button>
+      <button id="ibu-dismiss-summary-btn" class="ibu-btn">Dismiss</button>
+    </div>
+  `;
+  
+  let reloadCountdown = 5;
+  let countdownInterval = setInterval(() => {
+    reloadCountdown--;
+    const btn = document.getElementById('ibu-reload-btn');
+    if (btn) {
+      btn.textContent = `Reloading page in ${reloadCountdown}s...`;
+    }
+    if (reloadCountdown <= 0) {
+      clearInterval(countdownInterval);
+      window.location.reload();
+    }
+  }, 1000);
+  
+  document.getElementById('ibu-reload-btn').addEventListener('click', () => {
+    clearInterval(countdownInterval);
+    window.location.reload();
+  });
+  
+  document.getElementById('ibu-dismiss-summary-btn').addEventListener('click', () => {
+    clearInterval(countdownInterval);
+    removeExtension();
+    initExtension();
+  });
+}
+
+function checkSessionRecovery() {
+  const savedQueueStr = localStorage.getItem('ibu_active_queue');
+  const savedTotalStr = localStorage.getItem('ibu_total_count');
+  
+  if (savedQueueStr && savedTotalStr) {
+    try {
+      const savedQueue = JSON.parse(savedQueueStr);
+      const savedTotal = parseInt(savedTotalStr, 10);
+      
+      if (Array.isArray(savedQueue) && savedQueue.length > 0) {
+        showRecoveryBanner(savedQueue, savedTotal);
+      }
+    } catch (e) {
+      console.error('Failed to parse saved session recovery queue:', e);
+      localStorage.removeItem('ibu_active_queue');
+      localStorage.removeItem('ibu_total_count');
+    }
+  }
+}
+
+function showRecoveryBanner(savedQueue, savedTotal) {
+  const body = document.querySelector('.ibu-body');
+  if (!body || document.getElementById('ibu-recovery-banner')) return;
+  
+  const banner = document.createElement('div');
+  banner.id = 'ibu-recovery-banner';
+  banner.className = 'ibu-banner';
+  banner.innerHTML = `
+    <div class="ibu-banner-title">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+      </svg>
+      Unfinished Session
+    </div>
+    <p class="ibu-banner-text">We found a pending batch of ${savedQueue.length} posts. Would you like to resume unsaving them?</p>
+    <div class="ibu-banner-actions">
+      <button id="ibu-resume-btn" class="ibu-banner-btn ibu-banner-btn-primary">Resume</button>
+      <button id="ibu-dismiss-btn" class="ibu-banner-btn">Dismiss</button>
+    </div>
+  `;
+  
+  body.insertBefore(banner, body.firstChild);
+  
+  document.getElementById('ibu-resume-btn').addEventListener('click', () => {
+    banner.remove();
+    unsaveSelectedPosts(savedQueue, savedTotal);
+  });
+  
+  document.getElementById('ibu-dismiss-btn').addEventListener('click', () => {
+    banner.remove();
+    localStorage.removeItem('ibu_active_queue');
+    localStorage.removeItem('ibu_total_count');
+  });
+}
+
+async function unsaveSelectedPosts(restoredQueue = null, restoredTotal = null) {
+  let selectedShortcodes = [];
+  let cbMap = new Map();
+  let total = 0;
   
   const progressWrapper = document.getElementById('ibu-progress');
   const progressBar = document.getElementById('ibu-progress-bar');
@@ -426,6 +615,48 @@ async function unsaveSelectedPosts() {
   const selectAllBtn = document.getElementById('ibu-select-all');
   const deselectAllBtn = document.getElementById('ibu-deselect-all');
   
+  if (restoredQueue) {
+    selectedShortcodes = restoredQueue;
+    total = restoredTotal || restoredQueue.length;
+    // Map checkboxes currently in DOM if they exist (just in case they are visible)
+    const selectedCheckboxes = document.querySelectorAll('.ibu-checkbox-wrapper.selected');
+    selectedCheckboxes.forEach(cb => {
+      const post = cb.closest('a');
+      if (post) {
+        const shortcode = getShortcodeFromHref(post.href);
+        if (shortcode) {
+          cbMap.set(shortcode, cb);
+        }
+      }
+    });
+  } else {
+    const selectedCheckboxes = Array.from(document.querySelectorAll('.ibu-checkbox-wrapper.selected'));
+    if (selectedCheckboxes.length === 0) return;
+    
+    selectedCheckboxes.forEach(cb => {
+      const post = cb.closest('a');
+      if (post) {
+        const shortcode = getShortcodeFromHref(post.href);
+        if (shortcode) {
+          selectedShortcodes.push(shortcode);
+          cbMap.set(shortcode, cb);
+        }
+      }
+    });
+    total = selectedShortcodes.length;
+    
+    // Store in localStorage for crash recovery
+    localStorage.setItem('ibu_active_queue', JSON.stringify(selectedShortcodes));
+    localStorage.setItem('ibu_total_count', total.toString());
+  }
+
+  isRunning = true;
+  shouldStop = false;
+  
+  // Capture page navigation attempts to prevent breaking the script
+  document.addEventListener('click', navigationInterceptor, true);
+  window.addEventListener('beforeunload', beforeUnloadHandler);
+  
   // Setup executing UI state
   progressWrapper.style.display = 'flex';
   statusText.style.color = ''; // Reset warning color
@@ -434,28 +665,17 @@ async function unsaveSelectedPosts() {
   selectAllBtn.disabled = true;
   deselectAllBtn.disabled = true;
   
-  // Gather shortcodes and checkbox mappings to make them immune to DOM recycling/virtualization
-  const selectedShortcodes = [];
-  const cbMap = new Map();
-  selectedCheckboxes.forEach(cb => {
-    const post = cb.closest('a');
-    if (post) {
-      const shortcode = getShortcodeFromHref(post.href);
-      if (shortcode) {
-        selectedShortcodes.push(shortcode);
-        cbMap.set(shortcode, cb);
-      }
-    }
-  });
+  const startTime = Date.now();
+  let successCount = 0;
+  let skippedCount = 0;
+  let current = total - selectedShortcodes.length;
   
-  const total = selectedShortcodes.length;
-  let current = 0;
-  
-  for (const shortcode of selectedShortcodes) {
+  for (let i = 0; i < selectedShortcodes.length; i++) {
     if (shouldStop) {
       break;
     }
     
+    const shortcode = selectedShortcodes[i];
     current++;
     const percent = Math.round((current / total) * 100);
     progressBar.style.width = `${percent}%`;
@@ -467,6 +687,12 @@ async function unsaveSelectedPosts() {
     if (!post) {
       console.warn('Post element not found in DOM for shortcode:', shortcode);
       statusText.textContent = `Skipped: Post not found in grid (${current}/${total})`;
+      skippedCount++;
+      
+      // Update recovery session storage queue
+      const currentIndex = selectedShortcodes.indexOf(shortcode);
+      const remaining = selectedShortcodes.slice(currentIndex + 1);
+      localStorage.setItem('ibu_active_queue', JSON.stringify(remaining));
       continue;
     }
     
@@ -474,9 +700,11 @@ async function unsaveSelectedPosts() {
     
     // Smoothly scroll to the target post to load virtualized elements and show visual progress
     post.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    await workerSleep(500); // wait for scroll to finish using web worker sleep
+    await workerSleep(500); // wait for scroll to finish
     
     statusText.textContent = `Opening post ${current} of ${total}...`;
+    
+    let isBlockedHandled = false;
     
     // 1. Click the post thumbnail to open modal
     post.click();
@@ -487,9 +715,23 @@ async function unsaveSelectedPosts() {
       if (window.location.pathname.includes(shortcode)) {
         break;
       }
+      
+      // Check if Instagram showed an error block dialog instead of opening
+      const blockDialog = checkActionBlocked();
+      if (blockDialog) {
+        await handleBlockCooldown(blockDialog);
+        i--; // Decrement index to retry this item
+        current--; // Adjust counter
+        isBlockedHandled = true;
+        break;
+      }
+      
       await workerSleep(100);
       urlRetries--;
     }
+    
+    if (isBlockedHandled) continue;
+    if (shouldStop) break;
     
     // Allow React/DOM rendering animation to settle
     await workerSleep(350);
@@ -503,23 +745,50 @@ async function unsaveSelectedPosts() {
         button = findBookmarkButton(modalArticle);
         if (button) break;
       }
+      
+      // Check for block dialog while loading
+      const blockDialog = checkActionBlocked();
+      if (blockDialog) {
+        await handleBlockCooldown(blockDialog);
+        i--;
+        current--;
+        isBlockedHandled = true;
+        break;
+      }
+      
       await workerSleep(300);
       retries--;
     }
     
+    if (isBlockedHandled) continue;
     if (shouldStop) break;
     
     if (!button) {
       console.warn('Bookmark button not found for post:', post.href);
       statusText.textContent = `Skipped: Button not found (${current}/${total})`;
+      skippedCount++;
     } else {
       if (isAlreadyUnsaved(button)) {
         statusText.textContent = `Skipping: Already unsaved (${current}/${total})`;
+        successCount++;
       } else {
         statusText.textContent = `Unsaving post ${current} of ${total}...`;
         button.click();
         await workerSleep(800); // Wait for click to register on server
+        
+        // Check if the click triggered an action block
+        const blockDialog = checkActionBlocked();
+        if (blockDialog) {
+          await handleBlockCooldown(blockDialog);
+          i--;
+          current--;
+          isBlockedHandled = true;
+        } else {
+          successCount++;
+        }
       }
+      
+      if (isBlockedHandled) continue;
       
       // Update Grid feedback
       post.style.opacity = '0.3';
@@ -546,6 +815,16 @@ async function unsaveSelectedPosts() {
       closeRetries--;
     }
     
+    // Update recovery session storage queue
+    const currentIndex = selectedShortcodes.indexOf(shortcode);
+    const remaining = selectedShortcodes.slice(currentIndex + 1);
+    if (remaining.length > 0) {
+      localStorage.setItem('ibu_active_queue', JSON.stringify(remaining));
+    } else {
+      localStorage.removeItem('ibu_active_queue');
+      localStorage.removeItem('ibu_total_count');
+    }
+    
     // 4. Baked-in Delay before opening the next post
     // Base delay: 1.2s to 2.2s randomized to mimic human reading/clicking speed
     const baseDelay = 1200 + Math.random() * 1000;
@@ -560,11 +839,11 @@ async function unsaveSelectedPosts() {
     
     // Sleep loop in 100ms steps using the Web Worker timer
     const delaySteps = Math.ceil(totalDelay / 100);
-    for (let i = 0; i < delaySteps; i++) {
+    for (let d = 0; d < delaySteps; d++) {
       if (shouldStop) break;
       
-      const remainingSec = ((delaySteps - i) * 0.1).toFixed(1);
-      if (coolDelay > 0 && i < (coolDelay / 100)) {
+      const remainingSec = ((delaySteps - d) * 0.1).toFixed(1);
+      if (coolDelay > 0 && d < (coolDelay / 100)) {
         statusText.textContent = `Cooling down... ${remainingSec}s (${current}/${total})`;
       } else {
         statusText.textContent = `Waiting ${remainingSec}s... (${current}/${total})`;
@@ -580,28 +859,35 @@ async function unsaveSelectedPosts() {
   document.removeEventListener('click', navigationInterceptor, true);
   window.removeEventListener('beforeunload', beforeUnloadHandler);
   
-  // Restore default UI state
-  isRunning = false;
-  actionBtn.style.display = 'block';
-  stopBtn.style.display = 'none';
-  selectAllBtn.disabled = false;
-  deselectAllBtn.disabled = false;
-  
   if (shouldStop) {
+    // Clear recovery session state since we are stopped
+    localStorage.removeItem('ibu_active_queue');
+    localStorage.removeItem('ibu_total_count');
+    
+    // Restore default UI state
+    isRunning = false;
+    actionBtn.style.display = 'block';
+    stopBtn.style.display = 'none';
+    selectAllBtn.disabled = false;
+    deselectAllBtn.disabled = false;
     statusText.textContent = `Stopped! Unsaved ${current - 1} of ${total} posts.`;
+    
+    setTimeout(() => {
+      if (!isRunning) {
+        progressWrapper.style.display = 'none';
+      }
+    }, 4000);
   } else {
-    statusText.textContent = `Completed! Reloading page in 2s...`;
+    // Clear recovery session state since we completed successfully
+    localStorage.removeItem('ibu_active_queue');
+    localStorage.removeItem('ibu_total_count');
+    
     progressBar.style.width = '100%';
-    await workerSleep(2000);
-    window.location.reload();
+    isRunning = false;
+    
+    // Show summary dashboard (which will reload after countdown or manual action)
+    await showSummaryDashboard(successCount, skippedCount, startTime, total);
   }
-  
-  // Hide progress after a brief layout delay if not running
-  setTimeout(() => {
-    if (!isRunning) {
-      progressWrapper.style.display = 'none';
-    }
-  }, 4000);
 }
 // Cleans up all injected elements on navigation away from saved posts
 function removeExtension() {

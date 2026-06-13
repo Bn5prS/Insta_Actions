@@ -9,6 +9,9 @@ It uses safe UI automation (sequentially opening modal items, clicking the bookm
 ## 🌟 Key Features
 
 - **Circular Selection Checkboxes**: Integrates seamless overlays on top of Instagram saved post thumbnails.
+- **Shift + Click Range Selection**: Click a post's checkbox, hold the `Shift` key, and click another post's checkbox to select or deselect all posts in between instantly.
+- **localStorage Session Recovery**: Automatically stores progress queue in local cache. If you refresh or close the tab, it prompts you to resume where you left off.
+- **Instagram Action Block Detection**: Automatically detects temporary blocks (e.g. "Try again later"), closes the error dialog, enters a **5-minute cooldown period**, and retries the post.
 - **Dynamic Scroll Injection**: Injects selection checkboxes on the fly using a `MutationObserver` as you scroll down the infinite-loading grid.
 - **Select All / Deselect All**: Select all currently loaded thumbnails on the viewport at once.
 - **Smart Human Emulation**: 
@@ -38,14 +41,17 @@ Since this is a custom extension, you can easily load it directly into Google Ch
 1. Log in to **[Instagram.com](https://www.instagram.com/)**.
 2. Go to your Saved page (e.g., `https://www.instagram.com/username/saved/all-posts/` or `https://www.instagram.com/saved/`).
 3. A sleek control panel will float in the **top-right** corner.
-4. Select the posts you want to unsave (either check them manually or click **Select All**).
+4. Select the posts you want to unsave (either check them manually, use **Shift + Click**, or click **Select All**).
 5. Click **"Unsave Selected"**.
 6. **Watch the automation run**:
    - The grid automatically scrolls to keep the currently automated post centered in the viewport.
    - The modal opens, clicks the bookmark button, closes, and waits.
-   - Fades processed thumbnails to `30%` opacity to provide visual feedback.
-   - Automatically reloads the page 2 seconds after completion to refresh the grid layout.
-7. Click **"Stop Unsaving"** at any time to pause or halt the process safely.
+   - Processed thumbnails fade to `30%` opacity to provide visual feedback.
+   - Any temporary block prompts trigger a 5-minute cooldown countdown before automatically retrying.
+7. **Review Execution Summary**:
+   - On completion, the panel displays a **Performance Summary Dashboard** showing time taken, success rates, and skipped counts.
+   - A **5-second countdown** automatically reloads the page to update the grid layout. You can click **"Dismiss"** to stay on the page and verify changes.
+8. Click **"Stop Unsaving"** at any time to pause or halt the process safely.
 
 ---
 
